@@ -1,14 +1,5 @@
 name: 🚀 Build & Release FlowDroid
 
-# ─── Déclencheurs ─────────────────────────────────────────────────────────────
-#
-#  • push sur main/develop  → build release signé (APK uploadé en artefact CI)
-#  • pull_request           → build debug seul (pas de signature nécessaire)
-#  • tag v*.*.*             → build release + création d'une GitHub Release
-#                             avec l'APK en pièce jointe
-#  • workflow_dispatch      → lancement manuel depuis l'UI GitHub,
-#                             choix debug/release
-#
 on:
   push:
     branches: [ main, develop ]
@@ -24,10 +15,8 @@ on:
         type: choice
         options: [ debug, release ]
 
-# ─── Variables globales ───────────────────────────────────────────────────────
 env:
   JAVA_VERSION: '17'
-  GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.caching=true -Dorg.gradle.jvmargs=-Xmx3g'
 
 jobs:
 
@@ -41,44 +30,51 @@ jobs:
       contents: write
 
     outputs:
-      apk_path:     ${{ steps.locate_apk.outputs.path }}
       apk_name:     ${{ steps.locate_apk.outputs.name }}
+      apk_path:     ${{ steps.locate_apk.outputs.path }}
       version_name: ${{ steps.version.outputs.name }}
 
     steps:
 
-      # ── 1. Checkout ──────────────────────────────────────────────────────
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── 2. Java 17 ───────────────────────────────────────────────────────
       - name: ☕ Setup JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
 
-      # ── 3. Cache Gradle ──────────────────────────────────────────────────
-      #    Réutilise les dépendances téléchargées entre les runs → build 2x plus rapide
-      - name: 📂 Cache Gradle
-        uses: actions/cache@v4
+      # ── Installe Gradle + génère un vrai gradlew + wrapper.jar ──────────
+      #    Cela remplace le gradlew simplifié du repo qui causait l'erreur
+      #    "Could not find or load main class -Xmx64m"
+      - name: 🔧 Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          gradle-version: '8.7'   # doit correspondre à gradle-wrapper.properties
+          cache-read-only: false
 
-      # ── 4. Permissions gradlew ───────────────────────────────────────────
-      - name: 🔧 Chmod gradlew
-        run: chmod +x gradlew
+      # ── Régénère le wrapper avec la vraie version de Gradle ─────────────
+      - name: 🔄 Générer Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.7
 
-      # ── 5. Version dynamique ─────────────────────────────────────────────
-      #    Sur un tag v1.2.3 → "v1.2.3"   |   sinon → "dev-a1b2c3d"
-      - name: 🔖 Calculer la version
+      - name: 🔑 Décoder Keystore
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "⚠️ Secret KEYSTORE_BASE64 absent → fallback debug"
+            echo "FALLBACK_DEBUG=true" >> $GITHUB_ENV
+          else
+            mkdir -p app/keystore
+            printf '%s' "$KEYSTORE_B64" | base64 -d > app/keystore/release.jks
+            echo "✅ Keystore décodé"
+          fi
+
+      - name: 🔖 Version
         id: version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -89,24 +85,7 @@ jobs:
           echo "name=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      # ── 6. Décoder le Keystore (sauf PR) ────────────────────────────────
-      #    Le .jks est stocké encodé en Base64 dans les Secrets du repo.
-      #    ⚠️  Ne jamais commiter le fichier .jks dans git !
-      - name: 🔑 Décoder Keystore
-        if: github.event_name != 'pull_request'
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "⚠️  Secret KEYSTORE_BASE64 absent → fallback build debug"
-            echo "FALLBACK_DEBUG=true" >> $GITHUB_ENV
-          else
-            mkdir -p app/keystore
-            printf '%s' "$KEYSTORE_B64" | base64 -d > app/keystore/release.jks
-            echo "✅ Keystore décodé ($(stat -c%s app/keystore/release.jks) octets)"
-          fi
-
-      # ── 7a. Build DEBUG ──────────────────────────────────────────────────
+      # ── Build DEBUG ──────────────────────────────────────────────────────
       - name: 📦 Build Debug APK
         if: |
           github.event_name == 'pull_request' ||
@@ -114,7 +93,7 @@ jobs:
           env.FALLBACK_DEBUG == 'true'
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # ── 7b. Build RELEASE (signé) ────────────────────────────────────────
+      # ── Build RELEASE ────────────────────────────────────────────────────
       - name: 📦 Build Release APK
         if: |
           github.event_name != 'pull_request' &&
@@ -127,7 +106,6 @@ jobs:
           KEY_PASSWORD:      ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      # ── 8. Retrouver et renommer l'APK ───────────────────────────────────
       - name: 🔍 Localiser APK
         id: locate_apk
         run: |
@@ -144,24 +122,17 @@ jobs:
           echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
           echo "✅ APK: $NEW_PATH ($(du -h $NEW_PATH | cut -f1))"
 
-      # ── 9. Résumé dans l'UI GitHub Actions ───────────────────────────────
       - name: 📊 Résumé build
         run: |
-          APK="${{ steps.locate_apk.outputs.path }}"
-          SIZE=$(du -h "$APK" | cut -f1)
+          SIZE=$(du -h "${{ steps.locate_apk.outputs.path }}" | cut -f1)
           echo "## 📱 FlowDroid Build" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Champ   | Valeur |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Champ | Valeur |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| 📦 Fichier | \`${{ steps.locate_apk.outputs.name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| 💾 Taille  | $SIZE |" >> $GITHUB_STEP_SUMMARY
           echo "| 🔖 Version | \`${{ steps.version.outputs.name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| 🌿 Branche | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔨 Runner  | \`ubuntu-latest\` |" >> $GITHUB_STEP_SUMMARY
 
-      # ── 10. Upload APK comme artefact CI ────────────────────────────────
-      #     Téléchargeable depuis Actions → le run → section "Artifacts"
-      #     Conservé 30 jours
       - name: ⬆️ Upload Artefact CI
         uses: actions/upload-artifact@v4
         with:
@@ -169,36 +140,20 @@ jobs:
           path: ${{ steps.locate_apk.outputs.path }}
           retention-days: 30
 
-      # ── 11. Créer la GitHub Release (tags v*.*.* seulement) ──────────────
-      #     L'APK est automatiquement attaché à la Release publique.
       - name: 🏷️ Créer GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: "FlowDroid ${{ github.ref_name }}"
-          tag_name: ${{ github.ref_name }}
           body: |
             ## 📱 FlowDroid ${{ github.ref_name }}
 
-            ### 🆕 Changements
-            ${{ github.event.head_commit.message }}
+            ### 📲 Installation
+            1. Téléchargez le `.apk` ci-dessous
+            2. **Paramètres → Sécurité → Sources inconnues** → Activer
+            3. Installez l'APK
 
-            ---
-
-            ### 📲 Comment installer
-            1. Téléchargez **FlowDroid-${{ github.ref_name }}.apk** ci-dessous
-            2. Sur Android : **Paramètres → Sécurité → Sources inconnues** → Activer
-            3. Ouvrez le `.apk` et installez
-
-            > ⚠️ **Requis :** Winlator (`com.winlator`) ou Winlator CMod (`com.winlator.cmod`)
-
-            ---
-
-            ### 🔧 Compatibilité
-            - Android 8.0+ (API 26)
-            - ARM64 recommandé
-            - Winlator 7.x+
-
+            > ⚠️ **Requis :** Winlator (`com.winlator`) installé sur l'appareil.
           files: ${{ steps.locate_apk.outputs.path }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
@@ -207,7 +162,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ══════════════════════════════════════════════════════════════════════════
-  # JOB 2 — LINT (parallèle au build, seulement sur PR et main)
+  # JOB 2 — LINT
   # ══════════════════════════════════════════════════════════════════════════
   lint:
     name: 🧹 Lint
@@ -222,18 +177,15 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
 
-      - name: 📂 Cache Gradle
-        uses: actions/cache@v4
+      - name: 🔧 Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/libs.versions.toml') }}
-          restore-keys: ${{ runner.os }}-gradle-
+          gradle-version: '8.7'
 
-      - run: chmod +x gradlew
+      - name: 🔄 Générer Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.7
 
-      - name: 🧹 Exécuter Lint
+      - name: 🧹 Lint Debug
         run: ./gradlew lintDebug --no-daemon
 
       - name: 📋 Upload rapport Lint
@@ -243,15 +195,3 @@ jobs:
           name: lint-report-run${{ github.run_number }}
           path: app/build/reports/lint-results-debug.html
           retention-days: 14
-
-      - name: 💬 Commenter PR si lint échoue
-        uses: actions/github-script@v7
-        if: github.event_name == 'pull_request' && failure()
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ **Lint échoué** — téléchargez le rapport dans les artefacts CI.'
-            })
