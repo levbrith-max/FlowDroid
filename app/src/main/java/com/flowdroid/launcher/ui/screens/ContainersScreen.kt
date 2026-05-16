@@ -34,7 +34,6 @@ fun ContainersScreen(
         }
     }
 
-    // New container dialog
     if (state.showNewContainerDialog) {
         var newName by remember { mutableStateOf("") }
         AlertDialog(
@@ -60,7 +59,6 @@ fun ContainersScreen(
         )
     }
 
-    // Edit sheet
     state.editingContainer?.let { container ->
         ContainerEditSheet(
             container = container,
@@ -86,9 +84,7 @@ fun ContainersScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Retour")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Retour") }
                 },
                 actions = {
                     if (state.isLudashiInstalled) {
@@ -106,8 +102,7 @@ fun ContainersScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
+                    containerColor = MaterialTheme.colorScheme.background),
             )
         },
         floatingActionButton = {
@@ -151,8 +146,6 @@ fun ContainersScreen(
     }
 }
 
-// ─── Container row ────────────────────────────────────────────────────────────
-
 @Composable
 private fun ContainerRow(
     container: WinlatorContainer,
@@ -173,8 +166,7 @@ private fun ContainerRow(
                             modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, "Options",
-                            modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.MoreVert, "Options", modifier = Modifier.size(18.dp))
                     }
                 }
             },
@@ -192,8 +184,6 @@ private fun ContainerRow(
         )
     }
 }
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
 
 @Composable
 private fun EmptyContainersPane(
@@ -226,7 +216,10 @@ private fun EmptyContainersPane(
         )
         if (isWinlatorInstalled) {
             Spacer(Modifier.height(20.dp))
-            Button(onClick = onSyncClick, containerColor = FlowBlue) {
+            Button(
+                onClick = onSyncClick,
+                colors = ButtonDefaults.buttonColors(containerColor = FlowBlue),
+            ) {
                 Icon(Icons.Default.Sync, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Synchroniser")
@@ -234,8 +227,6 @@ private fun EmptyContainersPane(
         }
     }
 }
-
-// ─── Container edit full-page sheet ──────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,8 +240,7 @@ private fun ContainerEditSheet(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Modifier • ${container.name}",
-                    style = MaterialTheme.typography.titleLarge) },
+                title = { Text("Modifier • ${container.name}", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Fermer") }
                 },
@@ -270,29 +260,20 @@ private fun ContainerEditSheet(
         },
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding)
+                .verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-
-            // ─── Général ──────────────────────────────────────────────────────
             EditSection("Général") {
                 FlowTextField("Nom", container.name, viewModel::updateName)
                 FlowTextField("Notes", container.notes, viewModel::updateNotes, maxLines = 3)
             }
-
-            // ─── Affichage ────────────────────────────────────────────────────
             EditSection("Affichage") {
                 FlowTextField("Résolution (ex: 1280x720)", container.screenSize, viewModel::updateScreenSize)
                 SliderField("DPI", container.screenDpi.toFloat(), 72f, 320f, steps = 24) {
                     viewModel.updateScreenDpi(it.toInt())
                 }
             }
-
-            // ─── Ressources ───────────────────────────────────────────────────
             EditSection("Ressources") {
                 SliderField("Cœurs CPU", container.cpuCount.toFloat(), 1f, 8f, steps = 6) {
                     viewModel.updateCpuCount(it.toInt())
@@ -306,54 +287,30 @@ private fun ContainerEditSheet(
                     Switch(checked = container.isBoxed86, onCheckedChange = viewModel::updateBoxed86)
                 }
             }
-
-            // ─── Graphiques ───────────────────────────────────────────────────
             EditSection("Graphiques & Audio") {
                 Text("Driver graphique", style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                ChipRow(
-                    items = GraphicsDriver.entries.map { it to it.label },
-                    selected = container.graphicsDriver,
-                    onSelect = viewModel::updateGraphicsDriver,
-                )
+                ChipRow(items = GraphicsDriver.entries.map { it to it.label },
+                    selected = container.graphicsDriver, onSelect = viewModel::updateGraphicsDriver)
                 Spacer(Modifier.height(4.dp))
                 Text("DX Wrapper", style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                ChipRow(
-                    items = DxWrapper.entries.map { it to it.label },
-                    selected = container.dxwrapper,
-                    onSelect = viewModel::updateDxWrapper,
-                )
+                ChipRow(items = DxWrapper.entries.map { it to it.label },
+                    selected = container.dxwrapper, onSelect = viewModel::updateDxWrapper)
                 Spacer(Modifier.height(4.dp))
                 Text("Driver audio", style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                ChipRow(
-                    items = AudioDriver.entries.map { it to it.label },
-                    selected = container.audioDriver,
-                    onSelect = viewModel::updateAudioDriver,
-                )
+                ChipRow(items = AudioDriver.entries.map { it to it.label },
+                    selected = container.audioDriver, onSelect = viewModel::updateAudioDriver)
             }
-
-            // ─── Version Windows ──────────────────────────────────────────────
             EditSection("Version Windows") {
-                ChipRow(
-                    items = WinVersion.entries.map { it to it.label },
-                    selected = container.winVersion,
-                    onSelect = viewModel::updateWinVersion,
-                )
+                ChipRow(items = WinVersion.entries.map { it to it.label },
+                    selected = container.winVersion, onSelect = viewModel::updateWinVersion)
             }
-
-            // ─── Variables d'env ──────────────────────────────────────────────
             EditSection("Variables d'environnement") {
-                FlowTextField(
-                    label = "ENV (ex: DXVK_HUD=1 MESA_VK_WSI_DEBUG=sw)",
-                    value = container.envVars,
-                    onValueChange = viewModel::updateEnvVars,
-                    maxLines = 4,
-                )
+                FlowTextField(label = "ENV (ex: DXVK_HUD=1 MESA_VK_WSI_DEBUG=sw)",
+                    value = container.envVars, onValueChange = viewModel::updateEnvVars, maxLines = 4)
             }
-
-            // ─── Chemin ───────────────────────────────────────────────────────
             if (container.containerPath.isNotBlank()) {
                 EditSection("Informations") {
                     Text("Chemin : ${container.containerPath}",
@@ -368,15 +325,10 @@ private fun ContainerEditSheet(
     }
 }
 
-// ─── Helper composables ───────────────────────────────────────────────────────
-
 @Composable
 private fun EditSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp,
-    ) {
+    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = FlowBlue)
@@ -386,38 +338,19 @@ private fun EditSection(title: String, content: @Composable ColumnScope.() -> Un
 }
 
 @Composable
-private fun FlowTextField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    maxLines: Int = 1,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        maxLines = maxLines,
-        modifier = Modifier.fillMaxWidth(),
-    )
+private fun FlowTextField(label: String, value: String, onValueChange: (String) -> Unit, maxLines: Int = 1) {
+    OutlinedTextField(value = value, onValueChange = onValueChange,
+        label = { Text(label) }, maxLines = maxLines, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
-private fun SliderField(
-    label: String,
-    value: Float,
-    min: Float,
-    max: Float,
-    steps: Int,
-    onValueChange: (Float) -> Unit,
-) {
+private fun SliderField(label: String, value: Float, min: Float, max: Float, steps: Int, onValueChange: (Float) -> Unit) {
     Column {
         Row {
             Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Text(value.toInt().toString(), style = MaterialTheme.typography.bodyLarge,
-                color = FlowBlue)
+            Text(value.toInt().toString(), style = MaterialTheme.typography.bodyLarge, color = FlowBlue)
         }
-        Slider(value = value, onValueChange = onValueChange,
-            valueRange = min..max, steps = steps,
+        Slider(value = value, onValueChange = onValueChange, valueRange = min..max, steps = steps,
             colors = SliderDefaults.colors(thumbColor = FlowBlue, activeTrackColor = FlowBlue))
     }
 }
